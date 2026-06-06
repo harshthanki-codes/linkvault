@@ -14,8 +14,7 @@ export async function updateProfile(input: ProfileInput) {
     return { error: parsed.error.flatten().fieldErrors }
   }
 
-  const { data: existing } = await supabase
-    .from('profiles')
+  const { data: existing } = await (supabase.from('profiles') as any)
     .select('id')
     .eq('handle', parsed.data.handle)
     .neq('id', user.id)
@@ -25,15 +24,19 @@ export async function updateProfile(input: ProfileInput) {
     return { error: { handle: ['This handle is already taken'] } }
   }
 
-  const oldProfile = await supabase
-    .from('profiles')
+  const oldProfile = await (supabase.from('profiles') as any)
     .select('handle')
     .eq('id', user.id)
     .single()
 
-  const { error } = await supabase
-    .from('profiles')
-    .update(parsed.data)
+  const updateData = {
+    handle: parsed.data.handle,
+    display_name: parsed.data.display_name ?? null,
+    bio: parsed.data.bio ?? null,
+  }
+
+  const { error } = await (supabase.from('profiles') as any)
+    .update(updateData)
     .eq('id', user.id)
 
   if (error) return { error: { root: [error.message] } }
@@ -49,10 +52,9 @@ export async function updateProfile(input: ProfileInput) {
 
 export async function getProfileByHandle(handle: string) {
   const supabase = createClient()
-  const { data } = await supabase
-    .from('profiles')
+  const { data } = await (supabase.from('profiles') as any)
     .select('id, handle, display_name, bio')
     .eq('handle', handle)
     .maybeSingle()
-  return data
+  return data as { id: string; handle: string; display_name: string | null; bio: string | null } | null
 }
