@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "project": "linkvault",
+  "branch": "entire/checkpoints/v1",
+  "redact": {
+    "env": [
+      "NEXT_PUBLIC_SUPABASE_URL",
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "RESEND_API_KEY",
+      "RESEND_FROM_ADDRESS",
+      "NEXT_PUBLIC_APP_URL"
+    ],
+    "patterns": [
+      "re_[a-zA-Z0-9]+",
+      "eyJ[a-zA-Z0-9_-]+\\.[a-zA-Z0-9_-]+\\.[a-zA-Z0-9_-]+"
+    ]
+  }
+}
