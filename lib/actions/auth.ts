@@ -10,22 +10,22 @@ export async function signUpWithEmail(email: string, password: string) {
     email,
     password,
     options: {
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
+      emailRedirectTo: `/auth/callback`,
     },
   })
 
   if (error) return { error: error.message }
 
-  // Profile row is created by DB trigger (handle_new_user).
-  // We fetch it immediately to get the auto-generated handle for the welcome email.
   if (data.user) {
-    const { data: profile } = await supabase
+    const userId: string = data.user.id
+    const { data: profileData } = await supabase
       .from('profiles')
       .select('handle')
-      .eq('id', data.user.id)
+      .eq('id', userId)
       .maybeSingle()
 
-    await sendWelcomeEmail(email, profile?.handle ?? email.split('@')[0])
+    const handle: string = (profileData as { handle: string } | null)?.handle ?? email.split('@')[0]
+    await sendWelcomeEmail(email, handle)
   }
 
   return { success: true }
