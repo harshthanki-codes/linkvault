@@ -7,17 +7,22 @@ interface Props {
   params: { handle: string }
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const profile = await getProfile(params.handle)
-  if (!profile) return { title: 'Not found' }
-
-  return {
-    title: profile.display_name ?? `@${profile.handle}`,
-    description: profile.bio ?? `Bookmarks by @${profile.handle}`,
-  }
+type Profile = {
+  id: string
+  handle: string
+  display_name: string | null
+  bio: string | null
 }
 
-async function getProfile(handle: string) {
+type Bookmark = {
+  id: string
+  title: string
+  url: string
+  description: string | null
+  created_at: string
+}
+
+async function getProfile(handle: string): Promise<Profile | null> {
   const supabase = createClient()
   const { data } = await supabase
     .from('profiles')
@@ -27,19 +32,32 @@ async function getProfile(handle: string) {
   return data
 }
 
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const profile = await getProfile(params.handle)
+  if (!profile) return { title: 'Not found' }
+  return {
+    title: profile.display_name ?? `@${profile.handle}`,
+    description: profile.bio ?? `Bookmarks by @${profile.handle}`,
+  }
+}
+
 export default async function PublicProfilePage({ params }: Props) {
   const profile = await getProfile(params.handle)
-  if (!profile) notFound()
+
+  if (!profile) {
+    notFound()
+    return null
+  }
 
   const supabase = createClient()
-  const { data: bookmarks } = await supabase
+  const { data: bookmarksData } = await supabase
     .from('bookmarks')
     .select('id, title, url, description, created_at')
     .eq('user_id', profile.id)
     .eq('is_public', true)
     .order('created_at', { ascending: false })
 
-  const list = bookmarks ?? []
+  const bookmarks: Bookmark[] = bookmarksData ?? []
 
   return (
     <div className="min-h-screen bg-background">
@@ -49,19 +67,26 @@ export default async function PublicProfilePage({ params }: Props) {
             {profile.display_name ?? `@${profile.handle}`}
           </h1>
           {profile.display_name && (
-            <p className="text-sm text-muted-foreground mt-0.5">@{profile.handle}</p>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              @{profile.handle}
+            </p>
           )}
           {profile.bio && (
-            <p className="text-sm text-muted-foreground mt-3 leading-relaxed">{profile.bio}</p>
+            <p className="text-sm text-muted-foreground mt-3 leading-relaxed">
+              {profile.bio}
+            </p>
           )}
         </header>
 
-        {list.length === 0 ? (
+        {bookmarks.length === 0 ? (
           <p className="text-sm text-muted-foreground">No public bookmarks yet.</p>
         ) : (
           <ul className="space-y-3">
-            {list.map(b => (
-              <li key={b.id} className="group border border-border rounded-xl p-4 hover:border-foreground/20 transition-colors">
+            {bookmarks.map(b => (
+              <li
+                key={b.id}
+                className="group border border-border rounded-xl p-4 hover:border-foreground/20 transition-colors"
+              >
                 <a
                   href={b.url}
                   target="_blank"
@@ -70,7 +95,9 @@ export default async function PublicProfilePage({ params }: Props) {
                 >
                   <p className="font-medium text-sm group-hover:underline">{b.title}</p>
                   {b.description && (
-                    <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{b.description}</p>
+                    <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                      {b.description}
+                    </p>
                   )}
                   <div className="flex items-center gap-3 mt-2">
                     <span className="text-xs text-muted-foreground">{getDomain(b.url)}</span>
@@ -83,7 +110,10 @@ export default async function PublicProfilePage({ params }: Props) {
         )}
 
         <footer className="mt-16 pt-6 border-t border-border">
-          <a href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+          <a
+            href="/"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
             Powered by Linkvault
           </a>
         </footer>
