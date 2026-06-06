@@ -26,13 +26,13 @@ type PageProps = {
 export async function generateMetadata({ params }: PageProps) {
   const supabase = createClient()
 
-  const { data } = await supabase
+  const result = await supabase
     .from('profiles')
     .select('*')
     .eq('handle', params.handle)
     .single()
 
-  const profile = data as Profile | null
+  const profile = result.data as Profile | null
 
   if (!profile) {
     return {
@@ -41,9 +41,9 @@ export async function generateMetadata({ params }: PageProps) {
   }
 
   return {
-    title: profile.display_name ?? `@${profile.handle}`,
+    title: profile.display_name || `@${profile.handle}`,
     description:
-      profile.bio ?? `Bookmarks by @${profile.handle}`,
+      profile.bio || `Bookmarks by @${profile.handle}`,
   }
 }
 
@@ -52,32 +52,32 @@ export default async function PublicProfilePage({
 }: PageProps) {
   const supabase = createClient()
 
-  const { data: profileData } = await supabase
+  const result = await supabase
     .from('profiles')
     .select('*')
     .eq('handle', params.handle)
     .single()
 
-  const profile = profileData as Profile | null
+  const profile = result.data as Profile | null
 
   if (!profile) {
     notFound()
   }
 
-  const { data: bookmarksData } = await supabase
+  const bookmarksResult = await supabase
     .from('bookmarks')
     .select('*')
     .eq('user_id', profile.id)
     .eq('is_public', true)
     .order('created_at', { ascending: false })
 
-  const bookmarks = (bookmarksData ?? []) as Bookmark[]
+  const bookmarks = (bookmarksResult.data ?? []) as Bookmark[]
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold">
-          {profile.display_name ?? profile.handle}
+          {profile.display_name || profile.handle}
         </h1>
 
         <p className="text-muted-foreground">
@@ -85,7 +85,9 @@ export default async function PublicProfilePage({
         </p>
 
         {profile.bio && (
-          <p className="mt-4">{profile.bio}</p>
+          <p className="mt-4">
+            {profile.bio}
+          </p>
         )}
       </div>
 
