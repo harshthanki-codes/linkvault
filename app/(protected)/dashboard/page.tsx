@@ -29,16 +29,15 @@ export default async function DashboardPage() {
     redirect('/login')
   }
 
-  const [bookmarks, profileResult] = await Promise.all([
-    getUserBookmarks(),
-    supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single(),
-  ])
+  const bookmarks = await getUserBookmarks()
 
-  const profile = profileResult.data as Profile | null
+  const { data } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', user.id)
+    .single()
+
+  const profile = data as Profile | null
 
   return (
     <div className="min-h-screen bg-background">
@@ -48,11 +47,11 @@ export default async function DashboardPage() {
       />
 
       <main className="mx-auto max-w-2xl px-4 py-8 space-y-6">
-        {!profile?.display_name && (
+        {!profile?.display_name ? (
           <ProfileSetup
             currentHandle={profile?.handle ?? ''}
           />
-        )}
+        ) : null}
 
         <BookmarkForm />
 
