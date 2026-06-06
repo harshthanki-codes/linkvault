@@ -9,9 +9,17 @@ import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import { getDomain, formatDate } from '@/lib/utils'
-import type { Database } from '@/types/supabase'
 
-type Bookmark = Database['public']['Tables']['bookmarks']['Row']
+interface Bookmark {
+  id: string
+  user_id: string
+  title: string
+  url: string
+  description: string | null
+  is_public: boolean
+  created_at: string | null
+  updated_at: string | null
+}
 
 interface Props {
   bookmark: Bookmark
@@ -118,12 +126,7 @@ export function BookmarkCard({ bookmark }: Props) {
             label="Public"
           />
           <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setEditing(false)}
-            >
+            <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(false)}>
               Cancel
             </Button>
             <Button type="submit" size="sm" disabled={loading}>
@@ -161,10 +164,10 @@ export function BookmarkCard({ bookmark }: Props) {
 
           <div className="flex items-center gap-3 mt-2">
             <span className="text-xs text-muted-foreground">
-              {getDomain(bookmark.url)}
+              {bookmark.url ? getDomain(bookmark.url) : ''}
             </span>
             <span className="text-xs text-muted-foreground">
-              {formatDate(bookmark.created_at)}
+              {bookmark.created_at ? formatDate(bookmark.created_at) : ''}
             </span>
           </div>
         </div>
@@ -174,9 +177,8 @@ export function BookmarkCard({ bookmark }: Props) {
             onClick={handleToggle}
             disabled={toggling}
             className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-accent transition-colors"
-            title={bookmark.is_public ? 'Make private' : 'Make public'}
           >
-            {bookmark.is_public ? 'Private' : 'Public'}
+            {bookmark.is_public ? 'Make private' : 'Make public'}
           </button>
           <button
             onClick={() => setEditing(true)}
