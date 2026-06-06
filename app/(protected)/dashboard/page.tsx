@@ -1,62 +1,121 @@
-import { redirect } from 'next/navigation'
+import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getUserBookmarks } from '@/lib/actions/bookmarks'
-import { BookmarkForm } from './_components/BookmarkForm'
-import { BookmarkSearch } from './_components/BookmarkSearch'
-import { ProfileSetup } from './_components/ProfileSetup'
-import { DashboardHeader } from './_components/DashboardHeader'
-
-export const metadata = {
-  title: 'Dashboard',
-}
 
 type Profile = {
   id: string
   handle: string
   display_name: string | null
   bio: string | null
-  created_at: string
 }
 
-export default async function DashboardPage() {
-  const supabase = createClient()
+type Bookmark = {
+  id: string
+  title: string
+  url: string
+  description: string | null
+  is_public: boolean
+  user_id: string
+}
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect('/login')
+type PageProps = {
+  params: {
+    handle: string
   }
+}
 
-  const bookmarks = await getUserBookmarks()
+export async function generateMetadata({ params }: PageProps) {
+  const supabase = createClient()
 
   const { data } = await supabase
     .from('profiles')
     .select('*')
-    .eq('id', user.id)
+    .eq('handle', params.handle)
     .single()
 
   const profile = data as Profile | null
 
+  if (!profile) {
+    return {
+      title: 'User Not Found',
+    }
+  }
+
+  return {
+    title: profile.display_name ?? `@${profile.handle}`,
+    description:
+      profile.bio ?? `Bookmarks by @${profile.handle}`,
+  }
+}
+
+export default async function PublicProfilePage({
+  params,
+}: PageProps) {
+  const supabase = createClient()
+
+  const { data: profileData } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('handle', params.handle)
+    .single()
+
+  const profile = profileData as Profile | null
+
+  if (!profile) {
+    notFound()
+  }
+
+  const { data: bookmarksData } = await supabase
+    .from('bookmarks')
+    .select('*')
+    .eq('user_id', profile.id)
+    .eq('is_public', true)
+    .order('created_at', { ascending: false })
+
+  const bookmarks = (bookmarksData ?? []) as Bookmark[]
+
   return (
-    <div className="min-h-screen bg-background">
-      <DashboardHeader
-        profile={profile}
-        userEmail={user.email ?? ''}
-      />
+    <main className="mx-auto max-w-2xl px-4 py-8">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold">
+          {profile.display_name ?? profile.handle}
+        </h1>
 
-      <main className="mx-auto max-w-2xl px-4 py-8 space-y-6">
-        {!profile?.display_name ? (
-          <ProfileSetup
-            currentHandle={profile?.handle ?? ''}
-          />
-        ) : null}
+        <p className="text-muted-foreground">
+          @{profile.handle}
+        </p>
 
-        <BookmarkForm />
+        {profile.bio && (
+          <p className="mt-4">{profile.bio}</p>
+        )}
+      </div>
 
-        <BookmarkSearch bookmarks={bookmarks} />
-      </main>
-    </div>
+      <div className="space-y-4">
+        {bookmarks.map((bookmark) => (
+          <div
+            key={bookmark.id}
+            className="rounded-lg border p-4"
+          >
+            <h3 className="font-semibold">
+              {bookmark.title}
+            </h3>
+
+            <a
+              href={bookmark.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-blue-600"
+            >
+              {bookmark.url}
+            </a>
+
+            {bookmark.description && (
+              <p className="mt-2 text-sm">
+                {bookmark.description}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </main>
   )
 }
