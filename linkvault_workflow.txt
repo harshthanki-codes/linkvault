@@ -1,0 +1,262 @@
+LINKVAULT — HOW IT WORKS
+========================
+
+
+WHAT IS IT
+----------
+A personal bookmark manager. You save links, decide which ones are public,
+and get a profile page at linkvault.app/@yourname that anyone can visit.
+Think of it like a personal link collection you can optionally share.
+
+
+THE THREE TYPES OF PEOPLE USING IT
+-----------------------------------
+
+1. A visitor who found your profile link
+   - They open /@harsh in their browser
+   - They see your public bookmarks, nothing else
+   - No login required, no account needed
+
+2. You, logged in
+   - You see all your bookmarks — public AND private
+   - You can add, edit, delete, make things public or private
+   - Nobody else can see or touch your stuff
+
+3. Someone trying to hack it
+   - They grab their own login token
+   - They try to call the API directly to read your bookmarks
+   - Database returns zero rows — not because the app blocked them
+     but because Postgres itself rejects the query
+
+
+HOW SIGNING UP WORKS
+--------------------
+
+You enter email + password on the signup page.
+
+  Browser → Supabase Auth → creates your account
+                          → sends confirmation email
+                          → on confirm, creates your profile row in database
+                          → Resend sends you a welcome email
+
+Your handle (@harsh) is auto-generated from your email when the account
+is created. A Postgres trigger fires the moment your user row is created
+and inserts a profile row with a cleaned-up version of your email prefix.
+You can change it later in Settings.
+
+Nobody else can claim the same handle. There's a unique constraint in the
+database that makes it physically impossible — not just a check in the code.
+
+
+HOW LOGGING IN WORKS
+--------------------
+
+You enter email + password.
+
+  Browser → Supabase Auth → checks credentials
+                          → returns a JWT (a signed token)
+                          → token stored in a cookie
+
+Every page load after that, the middleware reads the cookie, verifies
+the token, and either lets you through or sends you to login.
+
+Two places check your session:
+
+  1. Middleware — runs at the edge before the page loads
+     Catches 99% of unauthenticated requests immediately
+
+  2. Every server action — re-checks your session before any database write
+     So even if someone somehow bypasses middleware, the action rejects them
+
+
+HOW BOOKMARKS WORK
+------------------
+
+Adding a bookmark:
+
+  You fill in the form (title, URL, optional description, public toggle)
+  → hits a Server Action (server-side function, not a public API endpoint)
+  → validates the input with Zod (checks URL is real, title isn't empty etc)
+  → inserts into the bookmarks table with your user_id attached
+  → page refreshes automatically via revalidatePath
+
+Editing a bookmark:
+
+  Same flow. The update query has TWO conditions:
+    .eq('id', bookmark_id)
+    .eq('user_id', your_id)
+
+  Both must match. So even if someone guesses a bookmark UUID, the second
+  condition fails and nothing happens. Zero rows updated.
+
+Deleting a bookmark:
+
+  Same double condition. You can only delete rows you own.
+
+Toggling public/private:
+
+  One click flips is_public from true to false or back.
+  Instantly appears or disappears from your public profile.
+
+
+HOW THE PUBLIC PROFILE WORKS
+-----------------------------
+
+Someone visits /@harsh
+
+  → Next.js looks up the profiles table for handle = 'harsh'
+  → If not found, shows 404
+  → If found, queries bookmarks WHERE user_id = harsh's id AND is_public = true
+  → Renders the list
+
+No login needed. No session checked. Fully public page.
+
+But here's the important part — the privacy is not enforced by the app
+skipping the private bookmarks in code. It's enforced by a Postgres policy:
+
+  "Anyone can read bookmarks where is_public = true"
+
+Private bookmarks don't exist in the query result. The database never
+returns them. Even if there's a bug in the Next.js code, private bookmarks
+cannot appear on the public page because Postgres won't include them.
+
+
+THE PRIVACY MODEL — WHY IT'S DIFFERENT
+---------------------------------------
+
+Most apps protect data like this:
+
+  User requests data → App checks if they're allowed → Returns data or error
+
+The problem: if there's a bug in the "checks if allowed" step, data leaks.
+
+Linkvault protects data like this:
+
+  User requests data → Database checks if they're allowed → Returns data or error
+  AND
+  User requests data → App checks if they're allowed → Returns data or error
+
+Both layers run independently. A bug in the app layer doesn't matter because
+the database layer still enforces ownership. This is called Row Level Security.
+
+The policies on the bookmarks table:
+
+  Policy 1 — Owners:
+  "You can read, write, update, delete your own rows only"
+  Condition: auth.uid() = user_id
+
+  Policy 2 — Public:
+  "Anyone can read rows where is_public = true"
+  Condition: is_public = true
+
+These run for EVERY query, including direct API calls, including Postman,
+including anyone who knows the Supabase URL and has a valid token.
+There is no way around them except having database admin access.
+
+
+HOW THE DASHBOARD WORKS
+------------------------
+
+You land on /dashboard after logging in.
+
+The page loads three things at once (parallel, not sequential):
+  1. Your bookmarks (all of them, public and private)
+  2. Your profile (handle, display name, bio)
+
+If you haven't set a display name yet, a profile setup banner appears at the top.
+
+Search and filter runs entirely in the browser — no extra API calls.
+You type, the list filters instantly. Three views: All, Public, Private.
+
+The header shows your handle as a clickable link to your public profile
+so you can always see what the world sees.
+
+
+HOW SETTINGS WORKS
+-------------------
+
+You can update:
+  - Your handle (checked for uniqueness before saving)
+  - Your display name
+  - Your bio
+
+Handle change flow:
+  → Check if new handle is already taken by someone else
+  → If taken, show error — don't attempt the update
+  → If free, update the profiles table
+  → Revalidate both the old handle URL and new handle URL
+
+So /@oldhandle and /@newhandle both get refreshed immediately.
+(Note: old handle becomes available for others to claim after you change it)
+
+
+THE EMAIL
+---------
+
+When you sign up, Resend sends a welcome email with:
+  - Your public profile URL
+  - A link to your dashboard
+
+This is non-blocking. If Resend is down or the email fails, your account
+still gets created. Email is a nice-to-have, not a hard dependency.
+
+The email is built with React Email — it's literally a React component
+that renders to HTML. Same developer experience as building a web page.
+
+
+THE DEPLOYMENT
+--------------
+
+Code lives on GitHub.
+Every push to main triggers a Vercel deployment automatically.
+Environment variables (API keys, database URLs) live in Vercel's dashboard.
+They never touch the codebase or git history.
+
+Build process:
+  npm run build → TypeScript checks → Next.js compiles → Vercel deploys
+
+Takes about 45 seconds from git push to live URL.
+
+
+WHAT HAPPENS IF SOMETHING BREAKS
+----------------------------------
+
+If the app crashes:
+  - Static pages (landing, login, signup) still load from Vercel's CDN
+  - Dynamic pages (dashboard, profile) show Next.js error boundaries
+
+If Supabase is down:
+  - Auth fails gracefully with an error message
+  - No data is written or lost
+
+If Resend is down:
+  - Signup still works
+  - Welcome email just doesn't arrive
+  - User never knows, account is fine
+
+
+THE ONE THING MISSING
+---------------------
+
+Handle renames break old shared URLs.
+
+If you shared linkvault.app/@harsh with someone and then change your
+handle to @harshthanki, their link 404s.
+
+The fix: a handle_history table. Store every old handle with the user ID.
+When /@harsh is requested and not found as a current handle, check the
+history table, find the current handle, redirect automatically.
+
+Didn't build it because time ran out. Would be the first thing added next.
+
+
+SUMMARY IN ONE PARAGRAPH
+-------------------------
+
+User signs up, gets a profile, saves bookmarks. Each bookmark is private
+by default. Flipping it public makes it appear on a shareable profile page.
+Privacy is enforced at the database level using Postgres Row Level Security —
+not just in the application code — so there is no way to read another user's
+private data regardless of how you access the system. Built on Next.js,
+Supabase, Resend, and Vercel. Took one weekend to build and debug to
+production-ready state.
